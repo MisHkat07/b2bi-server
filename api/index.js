@@ -18,7 +18,7 @@ mongoose
   .catch((err) => console.error("⚠️ MongoDB connection error:", err));
 
 // Import Routes
-const businessRoutes = require("./routes/businessRoutes");
+const businessRoutes = require("../routes/businessRoutes");
 
 // Use Routes
 app.use("/api/google-place", businessRoutes);

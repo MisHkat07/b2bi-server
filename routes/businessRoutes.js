@@ -58,22 +58,6 @@ router.post("/search", async (req, res) => {
   const maxResults = Number.isInteger(count) && count > 0 ? count : 2;
 
   try {
-    // Check if searchText exists in Query collection
-    const existingQuery = await Query.findOne({ searchText }).populate(
-      "results"
-    );
-    if (
-      existingQuery &&
-      existingQuery.results &&
-      existingQuery.results.length > 0
-    ) {
-      // Return businesses from DB
-      return res
-        .status(200)
-        .json({ query: searchText, results: existingQuery.results });
-    }
-
-    // If not found, fetch from Google Places API and enrich
     const apiKey = process.env.GOOGLE_PLACES_API_KEY;
     const url = "https://places.googleapis.com/v1/places:searchText";
     const headers = {
@@ -143,6 +127,7 @@ router.post("/search", async (req, res) => {
     const savedResults = [];
 
     for (const result of enrichedResults) {
+      // console.log(result.gptInsights);
       const newDoc = new Businesses({
         name: result.name,
         id: result.id,
