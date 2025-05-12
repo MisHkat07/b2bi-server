@@ -126,7 +126,88 @@ router.post("/search", async (req, res) => {
     const savedResults = [];
 
     for (const result of enrichedResults) {
-      // console.log(result.gptInsights);
+      // Calculate generalParameters score
+      let generalScore = 0;
+      // 1. Website missing
+      if (!result.websiteUri) generalScore += 30;
+      // 2. Google Reviews < 5
+      if (typeof result.rating === "number" && result.rating < 5)
+        generalScore += 10;
+      // 3. Domain is Gmail/Yahoo
+      if (Array.isArray(result.emails) && result.emails.length > 0) {
+        const emailDomains = result.emails.map((e) =>
+          typeof e === "string" ? e.split("@")[1] : e.domain
+        );
+        if (
+          emailDomains.some((domain) => /gmail\.com|yahoo\.com/i.test(domain))
+        )
+          generalScore += 15;
+      }
+      // 4. Business registered < 2 years (from gptInsights.foundingYear)
+      let nowYear = new Date().getFullYear();
+      let foundingYear = null;
+      if (
+        result?.gptInsights &&
+        result.gptInsights.company &&
+        result.gptInsights.company.foundingYear
+      ) {
+        foundingYear = parseInt(result.gptInsights.company.foundingYear);
+      }
+      if (foundingYear && nowYear - foundingYear < 2) generalScore += 20;
+      // 5. No SSL on site
+      if (result.websiteInfo && result.websiteInfo.hasSSL === false)
+        generalScore += 10;
+
+      // Calculate as percentage (max possible: 85)
+      const maxScore = 85;
+      const generalScorePercent = Math.round((generalScore / maxScore) * 100);
+
+      // Calculate marketingParameters score
+      let marketingScore = 0;
+      // 1. Website unavailable
+      if (
+        result.websiteInfo &&
+        result.websiteInfo.websiteStatus === "Unavailable"
+      )
+        marketingScore += 25;
+      // 2. PageSpeed performance < 40
+      if (
+        result.websiteInfo &&
+        result.websiteInfo.pageSpeed &&
+        typeof result.websiteInfo.pageSpeed.performance === "number" &&
+        result.websiteInfo.pageSpeed.performance < 40
+      )
+        marketingScore += 25;
+      // 3. Analyze gptInsights publicPosts/JobPosts
+      if (result.gptInsights && result.gptInsights["publicPosts/JobPosts"]) {
+        const posts = result.gptInsights["publicPosts/JobPosts"];
+        if (Array.isArray(posts)) {
+          for (const post of posts) {
+            const content = (post.content || "").toLowerCase();
+            if (content.includes("web developer")) marketingScore += 50;
+            if (content.includes("new store opening")) marketingScore += 30;
+            if (content.includes("designer")) marketingScore += 40;
+            if (
+              content.includes("new product") ||
+              content.includes("launching")
+            )
+              marketingScore += 40;
+            if (
+              content.includes("marketing role") ||
+              content.includes("marketing manager") ||
+              content.includes("marketing managers") ||
+              content.includes("hiring for marketing")
+            )
+              marketingScore += 35;
+          }
+        }
+      }
+      // Calculate as percentage (max possible: 190)
+      const maxMarketingScore = 190;
+      const marketingScorePercent = Math.round(
+        (marketingScore / maxMarketingScore) * 100
+      );
+
       const newDoc = new Businesses({
         name: result.name,
         id: result.id,
@@ -144,13 +225,18 @@ router.post("/search", async (req, res) => {
         primaryType: result.primaryType,
         emails: result?.emails || [],
         linkedIn: result.linkedIn,
-        gptInsights: result?.gptInsights || "",
+        gptInsights:
+          typeof result.gptInsights === "object" ? result.gptInsights : {},
         websiteInfo: {
           hasSSL: result.hasSSL,
           websiteStatus: result.websiteStatus,
           pageSpeed: result.pageSpeed || {},
         },
         searchText,
+        score: {
+          generalParameters: generalScorePercent,
+          marketingParameters: marketingScorePercent,
+        },
       });
       console.log(result);
       await newDoc.save();

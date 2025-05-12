@@ -19,6 +19,10 @@ const Businesses = new mongoose.Schema(
     userRatingCount: Number,
     reviews: [mongoose.Schema.Types.Mixed],
     primaryType: String,
+    score: {
+      generalParameters: Number,
+      marketingParameters: Number,
+    },
     // emails: [
     //   {
     //     email: String,
@@ -27,7 +31,7 @@ const Businesses = new mongoose.Schema(
     // ],
     emails: [String],
     linkedIn: String,
-    gptInsights: String,
+    gptInsights: {},
     websiteInfo: {
       websiteStatus: String,
       hasSSL: Boolean,

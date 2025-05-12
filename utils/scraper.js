@@ -40,19 +40,16 @@ async function scrapeWebsiteForInfo(url) {
     const page = await context.newPage();
 
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 20000 });
-const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-z]{2,}/g;
+    const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-z]{2,}/g;
     const content = await page.content();
-     let emailMatches =
-      content.match(emailRegex) ||
-      [];
+    let emailMatches = content.match(emailRegex) || [];
     let emails = Array.from(new Set(emailMatches));
     const $ = cheerio.load(content);
 
     // Extract emails
     const pageText = await page.innerText("body");
     let textEmailMatches =
-      pageText.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) ||
-      [];
+      pageText.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) || [];
     emails = Array.from(new Set([...emails, ...textEmailMatches]));
     if (emails.length === 0) {
       const contactUrls = [`${url}/contact`, `${url}/contact-us`];
@@ -119,8 +116,7 @@ const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-z]{2,}/g;
           ) {
             linkedIn = decodeURIComponent(realUrl);
           }
-        } catch (e) {
-        }
+        } catch (e) {}
       }
     }
 
@@ -150,7 +146,7 @@ const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-z]{2,}/g;
       formattedAddress: "",
       hasSSL,
     });
-console.log(gptInsights);
+    console.log(gptInsights);
     return {
       emails,
       linkedIn,
@@ -173,7 +169,7 @@ console.log(gptInsights);
   }
 }
 
-async function getPageSpeedScore(website)  {
+async function getPageSpeedScore(website) {
   try {
     const apiKey = process.env.PAGESPEED_INSIGHTS_API_KEY;
     if (!apiKey) return null;
@@ -202,12 +198,11 @@ async function getPageSpeedScore(website)  {
   }
 }
 
-
 async function analyzeWithGPT(data) {
   const { name, websiteUri, linkedIn, types, formattedAddress, hasSSL } = data;
 
- const prompt = `
-You are an intelligent business insight extractor. Use the details below to generate a comprehensive 2-3 sentence summary of the business, focusing on its professionalism, digital presence, and overall online reputation.
+  const prompt = `
+You are an intelligent business insight extractor. Use the details below to generate a json data of the business, focusing on its professionalism, digital presence, and overall online reputation.
 
 Business Name: ${name}
 Website: ${websiteUri}
@@ -216,26 +211,80 @@ Address: ${formattedAddress}
 Business Types: ${types?.join(", ") || "N/A"}
 SSL Secured: ${hasSSL ? "Yes" : "No"}
 
-Now, extract and include the following additional insights:
-- Estimated number of employees
-- Registered Year or company age
-- Overall business progress or industry positioning
-- Publicly available social media links or handles (LinkedIn, Twitter/X, Instagram, etc.)
-- Latest updates or posts from their LinkedIn profile (if available)
-- Any indication of current hiring status or job openings
+Now, extract and include the following additional insights with a bulleted list:
+Estimated number of employees and their profiles and roles
+Company size or revenue range
+CEO or founder's names and social media profile links if available
+CEO or founder's recent social media posts
+Registered Year or company age
+New store opening or expansion plans or new products or services
+Company description or mission statement
+Overall business progress or industry positioning
+Publicly available social media links or handles (LinkedIn, Twitter/X, Instagram, etc.)
+Latest updates or posts from their LinkedIn profile (if available)
+Any indication of current hiring status or job openings
 
-If some data is not directly available, infer reasonable assumptions based on available sources. Format your response in natural, fluent English and do not repeat the input data verbatim.
+If some data is not directly available, infer reasonable assumptions based on available sources. Format your response in json way. This is the required format: {
+  "company": {
+    "name": "",
+    "foundingYear": 2020
+  },
+  "leadership/Managers/Administration": [
+    {
+      "name": "",
+      "role": "",
+      "linkedin": "",
+      "email": "",
+      "phone": ""
+    }
+  ],
+  "employees": [
+    {
+      "name": "",
+      "role": "",
+      "email": "",
+      "phone": "",
+      "socialHandles": []
+    },
+    {
+      "name": "",
+      "role": "",
+      "email": "",
+      "phone": "",
+      "socialHandles": []
+    }
+  ],
+  "socialMedia": [
+    {
+      "platform": "LinkedIn",
+      "url": ""
+    },
+    {
+      "platform": "Twitter",
+      "url": ""
+    }
+  ],
+  "publicPosts/JobPosts": [
+    {
+      "date": "",
+      "content": "",
+      "source": ""
+    }
+  ]
+}
+
+only send data, no extra text or explanation. Do not include any other information. Do not include any code blocks. Do not include any markdown formatting. Do not include any links. Do not include any URLs. Do not include any HTML tags. Do not include any JSON formatting. Do not include any JSON keys or values. Do not include any JSON arrays or objects. Do not include any JSON properties or attributes. Do not include any JSON strings or numbers. Do not include any JSON booleans or null values.
 `;
 
   const response = await axios.post(
     "https://api.openai.com/v1/chat/completions",
     {
-      model: "gpt-4o",
+      model: "gpt-4o-mini-search-preview",
       messages: [
         { role: "system", content: "You're a business intelligence analyst." },
         { role: "user", content: prompt },
       ],
-      max_tokens: 300,
+      max_tokens: 1000,
     },
     {
       headers: {
@@ -243,7 +292,15 @@ If some data is not directly available, infer reasonable assumptions based on av
       },
     }
   );
-  return response.data.choices[0].message.content.trim();
+  // Try to parse the response as JSON, fallback to string if parsing fails
+  let gptContent = response.data.choices[0].message.content.trim();
+  let gptObj = {};
+  try {
+    gptObj = JSON.parse(gptContent);
+  } catch (e) {
+    gptObj = { raw: gptContent };
+  }
+  return gptObj;
 }
 
 module.exports = {
