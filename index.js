@@ -18,10 +18,10 @@ mongoose
   .catch((err) => console.error("⚠️ MongoDB connection error:", err));
 
 // Import Routes
-const businessRoutes = require("../routes/businessRoutes");
+const businessRoutes = require("./routes/businessRoutes");
 
 // Use Routes
-app.use("/api/google-place", businessRoutes);
+app.use("/api/b2bi", businessRoutes);
 
 app.get("/", (req, res) => {
   res.send("Welcome to the Google Place API");

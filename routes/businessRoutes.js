@@ -47,7 +47,6 @@ async function batchProcessWithConcurrencyLimit(
   return results;
 }
 
-// @route   POST /search
 // @desc    Search businesses via Google Places and enrich with scraping + GPT
 router.post("/search", async (req, res) => {
   const { searchText, count } = req.body;
@@ -158,12 +157,15 @@ router.post("/search", async (req, res) => {
       savedResults.push(newDoc);
     }
 
-    // Save search metadata
-    const queryRecord = new Query({
-      searchText,
-      results: savedResults.map((doc) => doc._id),
-    });
-    await queryRecord.save();
+    // Save search metadata only if not already present
+    const existingQuery = await Query.findOne({ searchText });
+    if (!existingQuery) {
+      const queryRecord = new Query({
+        searchText,
+        results: savedResults.map((doc) => doc._id),
+      });
+      await queryRecord.save();
+    }
 
     res.status(201).json({ query: searchText, results: savedResults });
   } catch (error) {
@@ -175,7 +177,6 @@ router.post("/search", async (req, res) => {
   }
 });
 
-// @route   GET /businesses
 // @desc    Get all businesses from the database
 router.get("/businesses", async (req, res) => {
   try {
@@ -186,6 +187,51 @@ router.get("/businesses", async (req, res) => {
     res
       .status(500)
       .json({ message: "Failed to fetch businesses", error: error.toString() });
+  }
+});
+
+// @desc    Get a single business by its id
+router.get("/businesses/:id", async (req, res) => {
+  try {
+    const business = await Businesses.findById(req.params.id);
+    if (!business) {
+      return res.status(404).json({ message: "Business not found" });
+    }
+    res.status(200).json(business);
+  } catch (error) {
+    console.error("Failed to fetch business:", error);
+    res
+      .status(500)
+      .json({ message: "Failed to fetch business", error: error.toString() });
+  }
+});
+
+// @desc    Get all queries from the database
+router.get("/queries", async (req, res) => {
+  try {
+    const queries = await Query.find();
+    res.status(200).json(queries);
+  } catch (error) {
+    console.error("Failed to fetch queries:", error);
+    res
+      .status(500)
+      .json({ message: "Failed to fetch queries", error: error.toString() });
+  }
+});
+
+// @desc    Get a single query and its results by query id
+router.get("/queries/:id", async (req, res) => {
+  try {
+    const query = await Query.findById(req.params.id).populate("results");
+    if (!query) {
+      return res.status(404).json({ message: "Query not found" });
+    }
+    res.status(200).json(query);
+  } catch (error) {
+    console.error("Failed to fetch query:", error);
+    res
+      .status(500)
+      .json({ message: "Failed to fetch query", error: error.toString() });
   }
 });
 
