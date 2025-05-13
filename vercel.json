@@ -1,5 +1,11 @@
 {
   "version": 2,
+  "functions": {
+    "utils/scraper.js": {
+      "memory": 1024,
+      "maxDuration": 10
+    }
+  },
   "builds": [
     {
       "src": "index.js",

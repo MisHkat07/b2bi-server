@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: b2bi-server
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: MONGO_URI
+        fromDatabase:
+          name: b2bi
+          property: mongodb+srv://b2bi:b2bi@cluster0.9ybo6q3.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0
+      - key: GOOGLE_PLACES_API_KEY
+        value: AIzaSyBUnCsIH11PIjg3YJWoSfQBdh-8xNW6toI
+      - key: PAGESPEED_INSIGHTS_API_KEY
+        value: AIzaSyCpyptHCT3lXLt8Oiwl-jnrwe6sc2Bh-xk
+      - key: OPENAI_API_KEY
+        value: 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
