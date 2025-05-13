@@ -54,7 +54,22 @@ router.post("/search", async (req, res) => {
     return res.status(400).json({ message: "Missing searchText" });
   }
 
-  const maxResults = Number.isInteger(count) && count > 0 ? count : 2;
+  const maxResults = Number.isInteger(count) && count > 0 ? count : 5;
+  let queryDoc = await Query.findOne({ searchText });
+  let useGoogleApi = true;
+  let pageTokenToUse = null;
+  if (queryDoc) {
+    // If pageToken is null, all data fetched, return from DB
+    if (!queryDoc.pageToken) {
+      return res.status(200).json({
+        query: searchText,
+        results: await Businesses.find({ _id: { $in: queryDoc.results } }),
+      });
+    } else {
+      // Use the last saved pageToken for next Google API call
+      pageTokenToUse = queryDoc.pageToken;
+    }
+  }
 
   try {
     const apiKey = process.env.GOOGLE_PLACES_API_KEY;
@@ -68,11 +83,16 @@ router.post("/search", async (req, res) => {
     let allPlaces = [];
     let nextPageToken = null;
     let firstRequest = true;
+    let lastPageToken = null;
 
     // Fetch all pages from Google Places
+    let fetchCount = 0;
     do {
       const body = { textQuery: searchText };
-      if (!firstRequest && nextPageToken) {
+      if (pageTokenToUse) {
+        body.pageToken = pageTokenToUse;
+        pageTokenToUse = null; // Only use the saved token for the first request
+      } else if (!firstRequest && nextPageToken) {
         body.pageToken = nextPageToken;
       }
 
@@ -81,13 +101,18 @@ router.post("/search", async (req, res) => {
 
       allPlaces = allPlaces.concat(places);
       nextPageToken = response.data.nextPageToken;
+      if (nextPageToken) {
+        lastPageToken = nextPageToken;
+      }
       firstRequest = false;
+      fetchCount++;
 
       if (nextPageToken && allPlaces.length < maxResults) {
         await new Promise((r) => setTimeout(r, 2000)); // delay before next page
       }
-    } while (nextPageToken && allPlaces.length < maxResults);
+    } while (nextPageToken && allPlaces.length < maxResults && fetchCount < 1);
 
+    // Only fetch one page of new results per search
     allPlaces = allPlaces.slice(0, maxResults);
 
     // Enrich each place with scraped data
@@ -143,6 +168,14 @@ router.post("/search", async (req, res) => {
         )
           generalScore += 15;
       }
+      // 2. PageSpeed performance < 40
+      if (
+        result.websiteInfo &&
+        result.websiteInfo.pageSpeed &&
+        typeof result.websiteInfo.pageSpeed.performance === "number" &&
+        result.websiteInfo.pageSpeed.performance < 40
+      )
+        generalScore += 25;
       // 4. Business registered < 2 years (from gptInsights.foundingYear)
       let nowYear = new Date().getFullYear();
       let foundingYear = null;
@@ -170,14 +203,7 @@ router.post("/search", async (req, res) => {
         result.websiteInfo.websiteStatus === "Unavailable"
       )
         marketingScore += 25;
-      // 2. PageSpeed performance < 40
-      if (
-        result.websiteInfo &&
-        result.websiteInfo.pageSpeed &&
-        typeof result.websiteInfo.pageSpeed.performance === "number" &&
-        result.websiteInfo.pageSpeed.performance < 40
-      )
-        marketingScore += 25;
+
       // 3. Analyze gptInsights publicPosts/JobPosts
       if (result.gptInsights && result.gptInsights["publicPosts/JobPosts"]) {
         const posts = result.gptInsights["publicPosts/JobPosts"];
@@ -240,18 +266,47 @@ router.post("/search", async (req, res) => {
       });
       console.log(result);
       await newDoc.save();
-      savedResults.push(newDoc);
+      // Attach generalScore for sorting
+      savedResults.push({
+        doc: newDoc,
+        generalScore: newDoc.score.generalParameters,
+      });
     }
 
-    // Save search metadata only if not already present
-    const existingQuery = await Query.findOne({ searchText });
-    if (!existingQuery) {
-      const queryRecord = new Query({
+    // Sort savedResults by generalScore descending
+    savedResults.sort((a, b) => b.generalScore - a.generalScore);
+    // Extract only the document objects for saving in Query
+    const sortedDocs = savedResults.map((item) => item.doc);
+
+    // Save search metadata
+    if (!queryDoc) {
+      queryDoc = new Query({
         searchText,
-        results: savedResults.map((doc) => doc._id),
+        results: sortedDocs.map((doc) => doc._id),
+        pageToken: lastPageToken || null,
+        searchCount: 1,
       });
-      await queryRecord.save();
+    } else {
+      // Append new results to existing ones, then sort all by generalScore
+      const allDocs = [
+        ...queryDoc.results,
+        ...sortedDocs.map((doc) => doc._id),
+      ];
+      // Fetch all docs for sorting
+      const allBusinessDocs = await Businesses.find({ _id: { $in: allDocs } });
+      allBusinessDocs.sort(
+        (a, b) =>
+          (b.score?.generalParameters || 0) - (a.score?.generalParameters || 0)
+      );
+      queryDoc.results = allBusinessDocs.map((doc) => doc._id);
+      queryDoc.pageToken = lastPageToken || null;
+      queryDoc.searchCount = (queryDoc.searchCount || 0) + 1;
     }
+    // If no more pageToken, set to null
+    if (!lastPageToken) {
+      queryDoc.pageToken = null;
+    }
+    await queryDoc.save();
 
     res.status(201).json({ query: searchText, results: savedResults });
   } catch (error) {
