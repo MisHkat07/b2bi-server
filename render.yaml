@@ -14,3 +14,5 @@ services:
         value: AIzaSyCpyptHCT3lXLt8Oiwl-jnrwe6sc2Bh-xk
       - key: OPENAI_API_KEY
         value: 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
+      - key: JWT_SECRET
+        value: my_super_secret_key_123!@#

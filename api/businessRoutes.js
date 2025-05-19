@@ -5,6 +5,11 @@ const Query = require("../models/Query");
 const axios = require("axios");
 const { scrapeWebsiteForInfo } = require("../utils/scraper");
 require("dotenv").config();
+const userRoutes = require("./user");
+const roleRoutes = require("./roles");
+const User = require("../models/User");
+router.use("/user", userRoutes.userRouter);
+router.use("/roles", roleRoutes);
 
 // Utility to batch process with limited concurrency and retries
 async function batchProcessWithConcurrencyLimit(
@@ -52,6 +57,26 @@ router.post("/search", async (req, res) => {
   const { searchText, count } = req.body;
   if (!searchText) {
     return res.status(400).json({ message: "Missing searchText" });
+  }
+
+  // Get current user from JWT (cookie or header)
+  let userBusinessTypeId = null;
+  let userId = null;
+  if (req.user && req.user.id) {
+    userId = req.user.id;
+  } else if (req.cookies && req.cookies.accessToken) {
+    try {
+      const jwt = require("jsonwebtoken");
+      const SECRET = process.env.JWT_SECRET || "random_secret_key";
+      const decoded = jwt.verify(req.cookies.accessToken, SECRET);
+      userId = decoded.id;
+    } catch (e) {}
+  }
+  if (userId) {
+    const userDoc = await User.findById(userId).lean();
+    if (userDoc && userDoc.businessType) {
+      userBusinessTypeId = userDoc.businessType;
+    }
   }
 
   const maxResults = Number.isInteger(count) && count > 0 ? count : 5;
@@ -138,7 +163,10 @@ router.post("/search", async (req, res) => {
 
         let websiteInfo = {};
         if (baseInfo.websiteUri) {
-          websiteInfo = await scrapeWebsiteForInfo(baseInfo.websiteUri);
+          websiteInfo = await scrapeWebsiteForInfo(
+            baseInfo.websiteUri,
+            userBusinessTypeId
+          );
         }
 
         return { ...baseInfo, ...websiteInfo };

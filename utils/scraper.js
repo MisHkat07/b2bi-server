@@ -7,6 +7,7 @@ const urlLib = require("url");
 const cheerio = require("cheerio");
 const dns = require("dns").promises;
 const tls = require("tls");
+const BusinessType = require("../models/BusinessType");
 require("dotenv").config();
 
 function checkSSL(host) {
@@ -28,7 +29,7 @@ function checkSSL(host) {
     });
   });
 }
-async function scrapeWebsiteForInfo(url) {
+async function scrapeWebsiteForInfo(url, userBusinessTypeId) {
   let browser;
   try {
     // Check if site is online
@@ -90,7 +91,9 @@ async function scrapeWebsiteForInfo(url) {
     // Extract LinkedIn
     let linkedIn = null;
     const allLinks = await page.$$eval("a", (anchors) =>
-      anchors.map((a) => a.href)
+      anchors
+        .map((a) => (a instanceof HTMLAnchorElement ? a.href : null))
+        .filter(Boolean)
     );
     linkedIn =
       allLinks.find(
@@ -138,14 +141,17 @@ async function scrapeWebsiteForInfo(url) {
     const parsedHost = new URL(url).hostname;
     hasSSL = await checkSSL(parsedHost);
     const pageSpeed = await getPageSpeedScore(url);
-    const gptInsights = await analyzeWithGPT({
-      name: $("title").text(),
-      websiteUri: url,
-      linkedIn,
-      types: [],
-      formattedAddress: "",
-      hasSSL,
-    });
+    const gptInsights = await analyzeWithGPT(
+      {
+        name: $("title").text(),
+        websiteUri: url,
+        linkedIn,
+        types: [],
+        formattedAddress: "",
+        hasSSL,
+      },
+      userBusinessTypeId
+    ); // Pass userBusinessTypeId here
     console.log(gptInsights);
     return {
       emails,
@@ -198,12 +204,21 @@ async function getPageSpeedScore(website) {
   }
 }
 
-async function analyzeWithGPT(data) {
+async function analyzeWithGPT(data, userBusinessTypeId) {
   const { name, websiteUri, linkedIn, types, formattedAddress, hasSSL } = data;
 
-  const prompt = `
-You are an intelligent business insight extractor. Use the details below to generate a json data of the business, focusing on its professionalism, digital presence, and overall online reputation.
+  // Default prompt
+  const defaultPrompt = `
+Suppose you are an intelligent business insight extractor. And I'm a Digital Marketer. My expected output is I want to approach my services to the target business. I will give the data input regarding the target business. Based on the input, analyse the marketing intent of the business by examining publicly available information such as their website performance, website content, Google presence, social media presence, and recent activities. Also, gather detailed information about the business's administration-level personnel, including names, positions, social media profiles, professional interests, and recent professional engagements or activities. Analyse the latest activities of their CEO and their social post presence, and see if there are any marketing opportunities.
+Try to scrape their latest social media activity and posts as much as possible, including the links to the posts. Analyse what their Key Performance Indicators and scope to improve sectors are, and how a Marketer can find the business approachable on the basis of their business types and their needs.
+As this prompt's result will help b2b client selection, get the info accordingly, which gonna to help make a decision. If you need to add extra fields in JSON, then add.
 
+Use the details below to generate a JSON data of the business, focusing on its professionalism, digital presence, and overall online reputation.
+ 
+* My Service Details : 
+Service Types: Digital Marketing, SEO, Web development
+
+* Target Business Details :
 Business Name: ${name}
 Website: ${websiteUri}
 LinkedIn: ${linkedIn || "N/A"}
@@ -211,80 +226,102 @@ Address: ${formattedAddress}
 Business Types: ${types?.join(", ") || "N/A"}
 SSL Secured: ${hasSSL ? "Yes" : "No"}
 
-Now, extract and include the following additional insights with a bulleted list:
-Estimated number of employees and their profiles and roles
-Company size or revenue range
-CEO or founder's names and social media profile links if available
-CEO or founder's recent social media posts
-Registered Year or company age
-New store opening or expansion plans or new products or services
-Company description or mission statement
-Overall business progress or industry positioning
-Publicly available social media links or handles (LinkedIn, Twitter/X, Instagram, etc.)
-Latest updates or posts from their LinkedIn profile (if available)
-Any indication of current hiring status or job openings
+ 
+ 
+Now, extract and include the following additional insights with a bulleted list: 
+* The Managers and company heads and their profiles, roles and latest social activities
+* Based on their activities, determine their interests.
+* Company size or revenue range 
+* CEO or founder's names and social media profile links if available 
+* CEO or founder's recent social media posts and insight about their interests
+* Registered Year or company age 
+* New store opening or expansion plans or new products, or services 
+* Company description or mission statement 
+* Overall business progress or industry positioning 
+* Publicly available social media links or handles (LinkedIn, Twitter/X, Instagram, etc.) 
+* Latest updates or posts from their LinkedIn profile (if available) 
+* Any indication of current hiring status or job openings 
+* Marketing Intent Analysis
+* Marketing Opportunities or Approachable fields.
+* Key Performance Indicators, their shortcomings and possible improvements.
+* Determine the scopes to approach them based on the services I'm offering and their business intent and fields of lack. 
+* How can I approach them in the optimum way?
+* Based on what my service offers and what the targeted business lacks, give the "marketing opportunities".
+* It'd be better if you could analyse their key Improvement scopes and what my service offers, give a possibility score to make a successful approach to them. Like ''possibility": 50%
 
-If some data is not directly available, infer reasonable assumptions based on available sources. Format your response in json way. This is the required format: {
-  "company": {
-    "name": "",
-    "foundingYear": 2020
-  },
-  "leadership/Managers/Administration": [
-    {
-      "name": "",
-      "role": "",
-      "linkedin": "",
-      "email": "",
-      "phone": ""
-    }
-  ],
-  "employees": [
-    {
-      "name": "",
-      "role": "",
-      "email": "",
-      "phone": "",
-      "socialHandles": []
-    },
-    {
-      "name": "",
-      "role": "",
-      "email": "",
-      "phone": "",
-      "socialHandles": []
-    }
-  ],
-  "socialMedia": [
-    {
-      "platform": "LinkedIn",
-      "url": ""
-    },
-    {
-      "platform": "Twitter",
-      "url": ""
-    }
-  ],
-  "publicPosts/JobPosts": [
-    {
-      "date": "",
-      "content": "",
-      "source": ""
-    }
-  ]
-}
 
-only send data, no extra text or explanation. Do not include any other information. Do not include any code blocks. Do not include any markdown formatting. Do not include any links. Do not include any URLs. Do not include any HTML tags. Do not include any JSON formatting. Do not include any JSON keys or values. Do not include any JSON arrays or objects. Do not include any JSON properties or attributes. Do not include any JSON strings or numbers. Do not include any JSON booleans or null values.
+If some data is not directly available, infer reasonable assumptions based on available sources.No dummy fake data will be acceptable from you.
+
+Format your response in JSON. This is the required format: 
+{ 
+  "company": { 
+    "name": "", 
+    "foundingYear": 2020 
+  }, 
+  "leadership/Managers/Administration": [ 
+    { 
+      "name": "", 
+      "role": "", 
+      "linkedin": "", 
+      "email": "", 
+      "phone": "" 
+    } 
+  ],
+  "socialMedia": [ 
+    { 
+      "platform": "LinkedIn", 
+      "url": "" 
+    }, 
+    { 
+      "platform": "Twitter", 
+      "url": "" 
+    } 
+  ], 
+  "publicPosts/JobPosts": [ 
+    { 
+      "date": "", 
+      "content": "", 
+      "source": "" 
+    } 
+  ],
+"marketing_intent_analysis": "",
+"marketing_opportunities":"",
+"keyPoints":[],
+ "approachable_fileds":[{
+      "field": "",
+      "description": ""
+    }],
+"approach_strategy": "",
+"possibility": "",
+} 
+ 
+only send data, no extra text or explanation. Do not include any other information. Do not include code blocks. Do not include markdown formatting. Do not include links. Do not include URLs. Do not include HTML tags. Do not include JSON formatting. Do not include JSON keys or values. Do not include JSON arrays or objects. Do not include JSON properties or attributes. Do not include JSON strings or numbers. Do not include JSON booleans or null values.
 `;
+
+  let prompt = defaultPrompt;
+  if (userBusinessTypeId) {
+    // Try to fetch the business type and use its custom prompt if available
+    const businessTypeDoc = await BusinessType.findById(
+      userBusinessTypeId
+    ).lean();
+    if (businessTypeDoc && businessTypeDoc.prompt) {
+      prompt = businessTypeDoc.prompt;
+    }
+  }
 
   const response = await axios.post(
     "https://api.openai.com/v1/chat/completions",
     {
       model: "gpt-4o-mini-search-preview",
       messages: [
-        { role: "system", content: "You're a business intelligence analyst." },
+        {
+          role: "system",
+          content:
+            "You're a business intelligence and Market Intent  analyst. Who will suggest the approachable ways for tagret business.",
+        },
         { role: "user", content: prompt },
       ],
-      max_tokens: 1000,
+      max_tokens: 1500,
     },
     {
       headers: {
@@ -305,4 +342,5 @@ only send data, no extra text or explanation. Do not include any other informati
 
 module.exports = {
   scrapeWebsiteForInfo,
+  analyzeWithGPT,
 };
