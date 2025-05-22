@@ -1,0 +1,43 @@
+# API Routes (user.js & businessRoutes.js & tierRoutes.js & businessTypeRoutes.js)
+
+## User APIs
+### Public
+POST   /api/b2bi/user/signup                - User signup
+POST   /api/b2bi/user/login                 - User login
+POST   /api/b2bi/user/refresh-token         - Refresh JWT access token
+POST   /api/b2bi/user/logout                - Logout user
+
+### Admin Only (requires authentication and admin role)
+POST   /api/b2bi/user/admin/users           - Create a new user
+PUT    /api/b2bi/user/admin/users/:id       - Update a user by ID
+DELETE /api/b2bi/user/admin/users/:id       - Delete a user by ID
+GET    /api/b2bi/user/admin/users           - List all users
+
+## Business APIs
+### Authenticated
+POST   /api/b2bi/business/search            - Search for businesses (Google Places + enrichment)
+GET    /api/b2bi/business/:id               - Get a business by ID
+GET    /api/b2bi/business                   - List all businesses (optionally filtered)
+POST   /api/b2bi/business                   - Create a new business (enriched)
+PUT    /api/b2bi/business/:id               - Update a business by ID
+DELETE /api/b2bi/business/:id               - Delete a business by ID
+
+## Tier APIs (Admin Only)
+POST   /api/b2bi/tier/admin/tiers           - Create a new tier
+GET    /api/b2bi/tier/admin/tiers           - List all tiers
+GET    /api/b2bi/tier/admin/tiers/:id       - Get a tier by ID
+PUT    /api/b2bi/tier/admin/tiers/:id       - Update a tier by ID
+DELETE /api/b2bi/tier/admin/tiers/:id       - Delete a tier by ID
+
+## BusinessType APIs (Admin Only)
+POST   /api/b2bi/businesstype/admin/businesstypes           - Create a new business type
+GET    /api/b2bi/businesstype/admin/businesstypes           - List all business types
+GET    /api/b2bi/businesstype/admin/businesstypes/:id       - Get a business type by ID
+PUT    /api/b2bi/businesstype/admin/businesstypes/:id       - Update a business type by ID
+DELETE /api/b2bi/businesstype/admin/businesstypes/:id       - Delete a business type by ID
+
+### Query APIs
+GET    /api/b2bi/query                      - List all queries
+GET    /api/b2bi/query/:id                  - Get a query by ID
+
+# (Note: Adjust endpoints if your actual route structure differs)

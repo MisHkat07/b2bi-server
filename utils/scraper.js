@@ -29,7 +29,12 @@ function checkSSL(host) {
     });
   });
 }
-async function scrapeWebsiteForInfo(url, userBusinessTypeId) {
+async function scrapeWebsiteForInfo(
+  url,
+  userBusinessTypeId,
+  userServiceAreas,
+  userBusinessTypeName
+) {
   let browser;
   try {
     // Check if site is online
@@ -150,7 +155,9 @@ async function scrapeWebsiteForInfo(url, userBusinessTypeId) {
         formattedAddress: "",
         hasSSL,
       },
-      userBusinessTypeId
+      userBusinessTypeId,
+      userServiceAreas,
+      userBusinessTypeName
     ); // Pass userBusinessTypeId here
     console.log(gptInsights);
     return {
@@ -204,19 +211,33 @@ async function getPageSpeedScore(website) {
   }
 }
 
-async function analyzeWithGPT(data, userBusinessTypeId) {
+async function analyzeWithGPT(
+  data,
+  userBusinessTypeId,
+  userServiceAreas,
+  userBusinessTypeName
+) {
   const { name, websiteUri, linkedIn, types, formattedAddress, hasSSL } = data;
+
+  // Dynamic prompt construction
+  const userServiceDetails =
+    userServiceAreas && userServiceAreas.length
+      ? `Service Types: ${userServiceAreas.join(", ")}`
+      : "Service Types: (not specified)";
+  const businessTypeText = userBusinessTypeName
+    ? userBusinessTypeName
+    : "Digital Marketer";
 
   // Default prompt
   const defaultPrompt = `
-Suppose you are an intelligent business insight extractor. And I'm a Digital Marketer. My expected output is I want to approach my services to the target business. I will give the data input regarding the target business. Based on the input, analyse the marketing intent of the business by examining publicly available information such as their website performance, website content, Google presence, social media presence, and recent activities. Also, gather detailed information about the business's administration-level personnel, including names, positions, social media profiles, professional interests, and recent professional engagements or activities. Analyse the latest activities of their CEO and their social post presence, and see if there are any marketing opportunities.
+Suppose you are an intelligent business insight extractor. And I'm a ${businessTypeText}. My expected output is I want to approach my services to the target business. I will give the data input regarding the target business. Based on the input, analyse the marketing intent of the business by examining publicly available information such as their website performance, website content, Google presence, social media presence, and recent activities. Also, gather detailed information about the business's administration-level personnel, including names, positions, social media profiles, professional interests, and recent professional engagements or activities. Analyse the latest activities of their CEO and their social post presence, and see if there are any marketing opportunities.
 Try to scrape their latest social media activity and posts as much as possible, including the links to the posts. Analyse what their Key Performance Indicators and scope to improve sectors are, and how a Marketer can find the business approachable on the basis of their business types and their needs.
 As this prompt's result will help b2b client selection, get the info accordingly, which gonna to help make a decision. If you need to add extra fields in JSON, then add.
 
 Use the details below to generate a JSON data of the business, focusing on its professionalism, digital presence, and overall online reputation.
  
 * My Service Details : 
-Service Types: Digital Marketing, SEO, Web development
+${userServiceDetails}
 
 * Target Business Details :
 Business Name: ${name}
@@ -295,7 +316,7 @@ Format your response in JSON. This is the required format:
 "possibility": "",
 } 
  
-only send data, no extra text or explanation. Do not include any other information. Do not include code blocks. Do not include markdown formatting. Do not include links. Do not include URLs. Do not include HTML tags. Do not include JSON formatting. Do not include JSON keys or values. Do not include JSON arrays or objects. Do not include JSON properties or attributes. Do not include JSON strings or numbers. Do not include JSON booleans or null values.
+only send data, no extra text or explanation. Do not include any other information. Do not include code blocks. Do not include markdown formatting. Do not include links. Do not include URLs. Do not include HTML tags. Do not include JSON formatting. Do not include JSON keys or values. Do not include JSON properties or attributes. Do not include JSON strings or numbers. Do not include JSON booleans or null values.
 `;
 
   let prompt = defaultPrompt;
@@ -329,7 +350,7 @@ only send data, no extra text or explanation. Do not include any other informati
       },
     }
   );
-  // Try to parse the response as JSON, fallback to string if parsing fails
+
   let gptContent = response.data.choices[0].message.content.trim();
   let gptObj = {};
   try {

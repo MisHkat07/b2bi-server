@@ -42,8 +42,10 @@ const getUserWithCompare = async (email) => {
 router.post("/signup", async (req, res) => {
   try {
     const { username, email, password, businessType, serviceAreas } = req.body;
-    if (!username || !email || !password) {
-      return res.status(400).json({ message: "All fields are required" });
+    if (!username || !email || !password || !businessType) {
+      return res
+        .status(400)
+        .json({ message: "All fields are required, including businessType" });
     }
     const existing = await User.findOne({ $or: [{ email }, { username }] });
     if (existing) {
@@ -188,5 +190,102 @@ function authMiddleware(req, res, next) {
     res.status(401).json({ message: "Invalid token" });
   }
 }
+
+// Middleware for admin-only access
+function adminOnly(req, res, next) {
+  if (!req.user || req.user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  next();
+}
+
+// Admin: Create user
+router.post("/admin/users", authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const {
+      username,
+      email,
+      password,
+      businessType,
+      serviceAreas,
+      role,
+      tier,
+    } = req.body;
+    if (!username || !email || !password || !businessType) {
+      return res
+        .status(400)
+        .json({ message: "All fields are required, including businessType" });
+    }
+    const existing = await User.findOne({ $or: [{ email }, { username }] });
+    if (existing) {
+      return res.status(409).json({ message: "User already exists" });
+    }
+    const userTier = tier ? tier : (await Tier.findOne({ name: "free" }))._id;
+    const userData = {
+      username,
+      email,
+      password,
+      businessType,
+      tier: userTier,
+      role: role || "user",
+    };
+    if (serviceAreas && Array.isArray(serviceAreas))
+      userData.serviceAreas = serviceAreas;
+    const user = new User(userData);
+    await user.save();
+    res.status(201).json({ message: "User created", user });
+  } catch (err) {
+    res
+      .status(500)
+      .json({ message: "Admin user creation failed", error: err.message });
+  }
+});
+
+// Admin: Update user
+router.put("/admin/users/:id", authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updates = req.body;
+    if (updates.password) delete updates.password; // Prevent password change here
+    const user = await User.findByIdAndUpdate(id, updates, { new: true });
+    if (!user) return res.status(404).json({ message: "User not found" });
+    res.json({ message: "User updated", user });
+  } catch (error) {
+    res
+      .status(500)
+      .json({ message: "Admin user update failed", error: error.message });
+  }
+});
+
+// Admin: Delete user
+router.delete(
+  "/admin/users/:id",
+  authMiddleware,
+  adminOnly,
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const user = await User.findByIdAndDelete(id);
+      if (!user) return res.status(404).json({ message: "User not found" });
+      res.json({ message: "User deleted" });
+    } catch (error) {
+      res
+        .status(500)
+        .json({ message: "Admin user deletion failed", error: error.message });
+    }
+  }
+);
+
+// Admin: Get all users
+router.get("/admin/users", authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const users = await User.find().select("-password"); // Exclude password field
+    res.json({ users });
+  } catch (error) {
+    res
+      .status(500)
+      .json({ message: "Failed to fetch users", error: error.message });
+  }
+});
 
 module.exports = { userRouter: router, authMiddleware };

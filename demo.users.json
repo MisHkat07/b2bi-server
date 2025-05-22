@@ -1,0 +1,29 @@
+[
+  {
+    "username": "alice",
+    "email": "alice@example.com",
+    "password": "$2a$10$abcdefghijklmnopqrstuv", 
+    "role": "user",
+    "tier": null, 
+    "businessType": null,
+    "serviceAreas": ["Software Development, App Development"]
+  },
+  {
+    "username": "bob",
+    "email": "bob@example.com",
+    "password": "$2a$10$abcdefghijklmnopqrstuv",
+    "role": "user",
+    "tier": null,
+    "businessType": null,
+    "serviceAreas": ["Cleaning", "Plumbing"]
+  },
+  {
+    "username": "admin",
+    "email": "admin@example.com",
+    "password": "$2a$10$abcdefghijklmnopqrstuv",
+    "role": "admin",
+    "tier": null,
+    "businessType": null,
+    "serviceAreas": ["SEO, Digital Marketing"]
+  }
+]

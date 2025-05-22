@@ -1,0 +1,15 @@
+
+[
+  {
+    "searchText": "diner new york",
+    "results": [], 
+    "pageToken": null,
+    "searchCount": 1
+  },
+  {
+    "searchText": "software company san francisco",
+    "results": [],
+    "pageToken": null,
+    "searchCount": 1
+  }
+]

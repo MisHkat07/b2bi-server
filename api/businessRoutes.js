@@ -54,7 +54,7 @@ async function batchProcessWithConcurrencyLimit(
 
 // @desc    Search businesses via Google Places and enrich with scraping + GPT
 router.post("/search", async (req, res) => {
-  const { searchText, count } = req.body;
+  const { searchText } = req.body;
   if (!searchText) {
     return res.status(400).json({ message: "Missing searchText" });
   }
@@ -62,6 +62,8 @@ router.post("/search", async (req, res) => {
   // Get current user from JWT (cookie or header)
   let userBusinessTypeId = null;
   let userId = null;
+  let userServiceAreas = [];
+  let userBusinessTypeName = null;
   if (req.user && req.user.id) {
     userId = req.user.id;
   } else if (req.cookies && req.cookies.accessToken) {
@@ -69,33 +71,50 @@ router.post("/search", async (req, res) => {
       const jwt = require("jsonwebtoken");
       const SECRET = process.env.JWT_SECRET || "random_secret_key";
       const decoded = jwt.verify(req.cookies.accessToken, SECRET);
-      userId = decoded.id;
+      if (typeof decoded === "object" && decoded.id) {
+        userId = decoded.id;
+      }
     } catch (e) {}
   }
   if (userId) {
-    const userDoc = await User.findById(userId).lean();
-    if (userDoc && userDoc.businessType) {
-      userBusinessTypeId = userDoc.businessType;
+    const userDoc = await User.findById(userId).populate("businessType").lean();
+    if (userDoc) {
+      if (
+        userDoc.businessType &&
+        typeof userDoc.businessType === "object" &&
+        userDoc.businessType.name
+      ) {
+        userBusinessTypeId = userDoc.businessType._id;
+        userBusinessTypeName = userDoc.businessType.name;
+      } else if (userDoc.businessType) {
+        userBusinessTypeId = userDoc.businessType;
+      }
+      if (Array.isArray(userDoc.serviceAreas)) {
+        userServiceAreas = userDoc.serviceAreas;
+      }
     }
   }
 
-  const maxResults = Number.isInteger(count) && count > 0 ? count : 5;
   let queryDoc = await Query.findOne({ searchText });
-  let useGoogleApi = true;
-  let pageTokenToUse = null;
   if (queryDoc) {
-    // If pageToken is null, all data fetched, return from DB
-    if (!queryDoc.pageToken) {
-      return res.status(200).json({
-        query: searchText,
-        results: await Businesses.find({ _id: { $in: queryDoc.results } }),
-      });
-    } else {
-      // Use the last saved pageToken for next Google API call
-      pageTokenToUse = queryDoc.pageToken;
-    }
+    // Always return cached results from DB if query exists
+    const businesses = await Businesses.find({
+      _id: { $in: queryDoc.results },
+    });
+    // Optionally, sort businesses by generalScore if needed
+    businesses.sort(
+      (a, b) =>
+        (b.score?.generalParameters || 0) - (a.score?.generalParameters || 0)
+    );
+    return res.status(200).json({
+      query: searchText,
+      results: businesses,
+      resultCount: queryDoc.resultCount || businesses.length,
+      cached: true,
+    });
   }
 
+  // Only make a single call to Google Places API, no pagination/nextPageToken logic
   try {
     const apiKey = process.env.GOOGLE_PLACES_API_KEY;
     const url = "https://places.googleapis.com/v1/places:searchText";
@@ -105,40 +124,26 @@ router.post("/search", async (req, res) => {
       "X-Goog-FieldMask": "*",
     };
 
+    // Fetch all pages from Google Places until nextPageToken is null
     let allPlaces = [];
     let nextPageToken = null;
     let firstRequest = true;
     let lastPageToken = null;
-
-    // Fetch all pages from Google Places
-    let fetchCount = 0;
     do {
       const body = { textQuery: searchText };
-      if (pageTokenToUse) {
-        body.pageToken = pageTokenToUse;
-        pageTokenToUse = null; // Only use the saved token for the first request
-      } else if (!firstRequest && nextPageToken) {
+      if (!firstRequest && nextPageToken) {
         body.pageToken = nextPageToken;
       }
-
       const response = await axios.post(url, body, { headers });
       const places = response.data.places || [];
-
       allPlaces = allPlaces.concat(places);
       nextPageToken = response.data.nextPageToken;
-      if (nextPageToken) {
-        lastPageToken = nextPageToken;
-      }
+      if (nextPageToken) lastPageToken = nextPageToken;
       firstRequest = false;
-      fetchCount++;
-
-      if (nextPageToken && allPlaces.length < maxResults) {
-        await new Promise((r) => setTimeout(r, 2000)); // delay before next page
+      if (nextPageToken) {
+        await new Promise((r) => setTimeout(r, 2000)); // Google API requires delay between page fetches
       }
-    } while (nextPageToken && allPlaces.length < maxResults && fetchCount < 1);
-
-    // Only fetch one page of new results per search
-    allPlaces = allPlaces.slice(0, maxResults);
+    } while (nextPageToken);
 
     // Enrich each place with scraped data
     const enrichedResults = await batchProcessWithConcurrencyLimit(
@@ -165,7 +170,9 @@ router.post("/search", async (req, res) => {
         if (baseInfo.websiteUri) {
           websiteInfo = await scrapeWebsiteForInfo(
             baseInfo.websiteUri,
-            userBusinessTypeId
+            userBusinessTypeId,
+            userServiceAreas,
+            userBusinessTypeName
           );
         }
 
@@ -181,11 +188,25 @@ router.post("/search", async (req, res) => {
     for (const result of enrichedResults) {
       // Calculate generalParameters score
       let generalScore = 0;
+      const generalCriteriaDetails = [];
       // 1. Website missing
-      if (!result.websiteUri) generalScore += 30;
+      if (!result.websiteUri) {
+        generalScore += 30;
+        generalCriteriaDetails.push({
+          parameter: "Website missing",
+          value: false,
+          points: 30,
+        });
+      }
       // 2. Google Reviews < 5
-      if (typeof result.rating === "number" && result.rating < 5)
+      if (typeof result.rating === "number" && result.rating < 5) {
         generalScore += 10;
+        generalCriteriaDetails.push({
+          parameter: "Google Reviews < 5",
+          value: result.rating,
+          points: 10,
+        });
+      }
       // 3. Domain is Gmail/Yahoo
       if (Array.isArray(result.emails) && result.emails.length > 0) {
         const emailDomains = result.emails.map((e) =>
@@ -193,18 +214,30 @@ router.post("/search", async (req, res) => {
         );
         if (
           emailDomains.some((domain) => /gmail\.com|yahoo\.com/i.test(domain))
-        )
+        ) {
           generalScore += 15;
+          generalCriteriaDetails.push({
+            parameter: "Domain is Gmail/Yahoo",
+            value: emailDomains,
+            points: 15,
+          });
+        }
       }
-      // 2. PageSpeed performance < 40
+      // 4. PageSpeed performance < 40
       if (
         result.websiteInfo &&
         result.websiteInfo.pageSpeed &&
         typeof result.websiteInfo.pageSpeed.performance === "number" &&
         result.websiteInfo.pageSpeed.performance < 40
-      )
+      ) {
         generalScore += 25;
-      // 4. Business registered < 2 years (from gptInsights.foundingYear)
+        generalCriteriaDetails.push({
+          parameter: "PageSpeed performance < 40",
+          value: result.websiteInfo.pageSpeed.performance,
+          points: 25,
+        });
+      }
+      // 5. Business registered < 2 years (from gptInsights.foundingYear)
       let nowYear = new Date().getFullYear();
       let foundingYear = null;
       if (
@@ -214,10 +247,23 @@ router.post("/search", async (req, res) => {
       ) {
         foundingYear = parseInt(result.gptInsights.company.foundingYear);
       }
-      if (foundingYear && nowYear - foundingYear < 2) generalScore += 20;
-      // 5. No SSL on site
-      if (result.websiteInfo && result.websiteInfo.hasSSL === false)
+      if (foundingYear && nowYear - foundingYear < 2) {
+        generalScore += 20;
+        generalCriteriaDetails.push({
+          parameter: "Business registered < 2 years",
+          value: foundingYear,
+          points: 20,
+        });
+      }
+      // 6. No SSL on site
+      if (result.websiteInfo && result.websiteInfo.hasSSL === false) {
         generalScore += 10;
+        generalCriteriaDetails.push({
+          parameter: "No SSL on site",
+          value: false,
+          points: 10,
+        });
+      }
 
       // Calculate as percentage (max possible: 85)
       const maxScore = 85;
@@ -225,34 +271,74 @@ router.post("/search", async (req, res) => {
 
       // Calculate marketingParameters score
       let marketingScore = 0;
+      const marketingCriteriaDetails = [];
       // 1. Website unavailable
       if (
         result.websiteInfo &&
         result.websiteInfo.websiteStatus === "Unavailable"
-      )
+      ) {
         marketingScore += 25;
+        marketingCriteriaDetails.push({
+          parameter: "Website unavailable",
+          value: result.websiteInfo.websiteStatus,
+          points: 25,
+        });
+      }
 
-      // 3. Analyze gptInsights publicPosts/JobPosts
+      // 2. Analyze gptInsights publicPosts/JobPosts
       if (result.gptInsights && result.gptInsights["publicPosts/JobPosts"]) {
         const posts = result.gptInsights["publicPosts/JobPosts"];
         if (Array.isArray(posts)) {
           for (const post of posts) {
             const content = (post.content || "").toLowerCase();
-            if (content.includes("web developer")) marketingScore += 50;
-            if (content.includes("new store opening")) marketingScore += 30;
-            if (content.includes("designer")) marketingScore += 40;
+            if (content.includes("web developer")) {
+              marketingScore += 50;
+              marketingCriteriaDetails.push({
+                parameter: "Job post: web developer",
+                value: post.content,
+                points: 50,
+              });
+            }
+            if (content.includes("new store opening")) {
+              marketingScore += 30;
+              marketingCriteriaDetails.push({
+                parameter: "Job post: new store opening",
+                value: post.content,
+                points: 30,
+              });
+            }
+            if (content.includes("designer")) {
+              marketingScore += 40;
+              marketingCriteriaDetails.push({
+                parameter: "Job post: designer",
+                value: post.content,
+                points: 40,
+              });
+            }
             if (
               content.includes("new product") ||
               content.includes("launching")
-            )
+            ) {
               marketingScore += 40;
+              marketingCriteriaDetails.push({
+                parameter: "Job post: new product/launching",
+                value: post.content,
+                points: 40,
+              });
+            }
             if (
               content.includes("marketing role") ||
               content.includes("marketing manager") ||
               content.includes("marketing managers") ||
               content.includes("hiring for marketing")
-            )
+            ) {
               marketingScore += 35;
+              marketingCriteriaDetails.push({
+                parameter: "Job post: marketing role/manager",
+                value: post.content,
+                points: 35,
+              });
+            }
           }
         }
       }
@@ -290,11 +376,12 @@ router.post("/search", async (req, res) => {
         score: {
           generalParameters: generalScorePercent,
           marketingParameters: marketingScorePercent,
+          generalCriteriaDetails,
+          marketingCriteriaDetails,
         },
       });
       console.log(result);
       await newDoc.save();
-      // Attach generalScore for sorting
       savedResults.push({
         doc: newDoc,
         generalScore: newDoc.score.generalParameters,
@@ -311,8 +398,8 @@ router.post("/search", async (req, res) => {
       queryDoc = new Query({
         searchText,
         results: sortedDocs.map((doc) => doc._id),
-        pageToken: lastPageToken || null,
         searchCount: 1,
+        resultCount: sortedDocs.length, // Save the number of results
       });
     } else {
       // Append new results to existing ones, then sort all by generalScore
@@ -327,13 +414,10 @@ router.post("/search", async (req, res) => {
           (b.score?.generalParameters || 0) - (a.score?.generalParameters || 0)
       );
       queryDoc.results = allBusinessDocs.map((doc) => doc._id);
-      queryDoc.pageToken = lastPageToken || null;
       queryDoc.searchCount = (queryDoc.searchCount || 0) + 1;
+      queryDoc.resultCount = allBusinessDocs.length; // Update the number of results
     }
-    // If no more pageToken, set to null
-    if (!lastPageToken) {
-      queryDoc.pageToken = null;
-    }
+
     await queryDoc.save();
 
     res.status(201).json({ query: searchText, results: savedResults });
@@ -391,11 +475,11 @@ router.get("/queries", async (req, res) => {
 // @desc    Get a single query and its results by query id
 router.get("/queries/:id", async (req, res) => {
   try {
-    const query = await Query.findById(req.params.id).populate("results");
-    if (!query) {
+    const queryDoc = await Query.findById(req.params.id).populate("results");
+    if (!queryDoc) {
       return res.status(404).json({ message: "Query not found" });
     }
-    res.status(200).json(query);
+    res.status(200).json(queryDoc);
   } catch (error) {
     console.error("Failed to fetch query:", error);
     res

@@ -1,0 +1,44 @@
+[
+  {
+    "name": "Joe's Diner",
+    "types": ["Restaurant", "Cafe"],
+    "businessStatus": "OPERATIONAL",
+    "displayName": { "text": "Joe's Diner", "languageCode": "en" },
+    "websiteUri": "https://joesdiner.com",
+    "googleMapsUri": "https://maps.google.com/?cid=1234567890",
+    "formattedAddress": "123 Main St, New York, NY",
+    "rating": 4.5,
+    "userRatingCount": 120,
+    "emails": ["info@joesdiner.com"],
+    "linkedIn": "https://linkedin.com/company/joesdiner",
+    "gptInsights": {},
+    "websiteInfo": {
+      "websiteStatus": "Online",
+      "hasSSL": true,
+      "pageSpeed": { "performance": 85 }
+    },
+    "searchText": "diner new york",
+    "score": { "generalParameters": 80, "marketingParameters": 60 }
+  },
+  {
+    "name": "Techify Solutions",
+    "types": ["Software Company", "SaaS"],
+    "businessStatus": "OPERATIONAL",
+    "displayName": { "text": "Techify Solutions", "languageCode": "en" },
+    "websiteUri": "https://techifysolutions.com",
+    "googleMapsUri": "https://maps.google.com/?cid=2345678901",
+    "formattedAddress": "456 Market St, San Francisco, CA",
+    "rating": 4.8,
+    "userRatingCount": 75,
+    "emails": ["contact@techifysolutions.com"],
+    "linkedIn": "https://linkedin.com/company/techifysolutions",
+    "gptInsights": {},
+    "websiteInfo": {
+      "websiteStatus": "Online",
+      "hasSSL": true,
+      "pageSpeed": { "performance": 92 }
+    },
+    "searchText": "software company san francisco",
+    "score": { "generalParameters": 90, "marketingParameters": 80 }
+  }
+]
