@@ -22,13 +22,21 @@ const Businesses = new mongoose.Schema(
     score: {
       generalParameters: Number,
       marketingParameters: Number,
+      generalCriteriaDetails: [
+        {
+          parameter: String,
+          value: mongoose.Schema.Types.Mixed,
+          points: Number,
+        },
+      ],
+      marketingCriteriaDetails: [
+        {
+          parameter: String,
+          value: mongoose.Schema.Types.Mixed,
+          points: Number,
+        },
+      ],
     },
-    // emails: [
-    //   {
-    //     email: String,
-    //     domain: String,
-    //   },
-    // ],
     emails: [String],
     linkedIn: String,
     gptInsights: {},

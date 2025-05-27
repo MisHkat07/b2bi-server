@@ -19,11 +19,13 @@ mongoose
 
 // Import Routes
 const businessRoutes = require("./api/businessRoutes");
+const dashboardRoutes = require("./api/dashboardRoutes");
 const tierRoutes = require("./api/tierRoutes");
 const businessTypeRoutes = require("./api/businessTypeRoutes");
 
 // Use Routes
 app.use("/api/b2bi", businessRoutes);
+app.use("/api/b2bi/dashboard", dashboardRoutes);
 app.use("/api/b2bi/tier", tierRoutes);
 app.use("/api/b2bi/businesstype", businessTypeRoutes);
 

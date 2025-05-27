@@ -1,12 +1,12 @@
 const mongoose = require("mongoose");
 
 const TierSchema = new mongoose.Schema({
-  name: { type: String, enum: ["free", "pro", "enterprise"], required: true },
-  monthlyQueries: { type: Number, required: true },
-  features: {
-    chromeExtension: { type: Boolean, default: false },
-    bulkUpload: { type: Boolean, default: false },
-  },
+  name: { type: String, unique: true }, 
+  maxQueriesPerMonth: { type: Number },
+  features: [String], 
+  priorityLevel: { type: Number }, 
+  dataSources: [String], 
+  createdAt: { type: Date, default: Date.now },
 });
 
 module.exports = mongoose.model("Tier", TierSchema);

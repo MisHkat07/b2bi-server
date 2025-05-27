@@ -16,6 +16,13 @@ const UserSchema = new mongoose.Schema(
     lastLogin: Date,
     queryCount: { type: Number, default: 0 },
     serviceAreas: [String],
+    tierChangeHistory: [
+      {
+        previousTier: { type: mongoose.Schema.Types.ObjectId, ref: "Tier" },
+        newTier: { type: mongoose.Schema.Types.ObjectId, ref: "Tier" },
+        changedAt: { type: Date, default: Date.now },
+      },
+    ],
   },
   { timestamps: true }
 );

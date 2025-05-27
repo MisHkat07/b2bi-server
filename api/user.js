@@ -11,8 +11,8 @@ router.use(cookieParser());
 const cookieOptions = {
   httpOnly: true,
   secure: process.env.NODE_ENV === "production",
-  sameSite: "lax", // Use the string literal 'lax' for compatibility
-  maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+  sameSite: "lax",
+  maxAge: 7 * 24 * 60 * 60 * 1000, 
 };
 
 function generateTokens(user) {
@@ -58,7 +58,6 @@ router.post("/signup", async (req, res) => {
         .status(500)
         .json({ message: "Free tier not found. Please contact support." });
     }
-    // Optionally assign businessType and serviceAreas if provided
     const userData = { username, email, password, tier: freeTier._id };
     if (businessType) userData.businessType = businessType;
     if (serviceAreas && Array.isArray(serviceAreas))
@@ -279,7 +278,7 @@ router.delete(
 // Admin: Get all users
 router.get("/admin/users", authMiddleware, adminOnly, async (req, res) => {
   try {
-    const users = await User.find().select("-password"); // Exclude password field
+    const users = await User.find().select("-password");
     res.json({ users });
   } catch (error) {
     res

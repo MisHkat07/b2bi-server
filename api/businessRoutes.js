@@ -380,7 +380,7 @@ router.post("/search", async (req, res) => {
           marketingCriteriaDetails,
         },
       });
-      console.log(result);
+
       await newDoc.save();
       savedResults.push({
         doc: newDoc,
