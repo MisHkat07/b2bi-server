@@ -16,6 +16,13 @@ const UserSchema = new mongoose.Schema(
     lastLogin: Date,
     queryCount: { type: Number, default: 0 },
     serviceAreas: [String],
+    serviceLocations: [
+      {
+        country: { type: String, required: true },
+        province: { type: String },
+        city: { type: String },
+      },
+    ],
     tierChangeHistory: [
       {
         previousTier: { type: mongoose.Schema.Types.ObjectId, ref: "Tier" },

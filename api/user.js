@@ -41,7 +41,7 @@ const getUserWithCompare = async (email) => {
 // Signup route
 router.post("/signup", async (req, res) => {
   try {
-    const { username, email, password, businessType, serviceAreas } = req.body;
+    const { username, email, password, businessType, serviceAreas, serviceLocations } = req.body;
     if (!username || !email || !password || !businessType) {
       return res
         .status(400)
@@ -62,6 +62,8 @@ router.post("/signup", async (req, res) => {
     if (businessType) userData.businessType = businessType;
     if (serviceAreas && Array.isArray(serviceAreas))
       userData.serviceAreas = serviceAreas;
+    if (serviceLocations && Array.isArray(serviceLocations))
+      userData.serviceLocations = serviceLocations;
     const user = new User(userData);
     await user.save();
     const { accessToken, refreshToken } = generateTokens(user);
@@ -83,6 +85,7 @@ router.post("/signup", async (req, res) => {
           role: user.role,
           tier: user.tier,
           serviceAreas: user.serviceAreas,
+          serviceLocations: user.serviceLocations,
         },
       });
   } catch (err) {
@@ -284,6 +287,25 @@ router.get("/admin/users", authMiddleware, adminOnly, async (req, res) => {
     res
       .status(500)
       .json({ message: "Failed to fetch users", error: error.message });
+  }
+});
+
+router.put("/update", authMiddleware, async (req, res) => {
+  try {
+    const updates = req.body;
+
+    delete updates.password;
+    delete updates.role;
+    delete updates.tier;
+
+    const user = await User.findByIdAndUpdate(req.user.id, updates, { new: true });
+    if (!user) {
+      return res.status(404).json({ message: "User not found." });
+    }
+
+    res.status(200).json({ message: "User updated successfully.", user });
+  } catch (error) {
+    res.status(500).json({ message: "Error updating user data.", error: error.message });
   }
 });
 

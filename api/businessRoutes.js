@@ -15,7 +15,7 @@ router.use("/roles", roleRoutes);
 async function batchProcessWithConcurrencyLimit(
   items,
   handler,
-  concurrency = 3,
+  concurrency = 1,
   retries = 2
 ) {
   const results = [];
@@ -64,39 +64,42 @@ router.post("/search", async (req, res) => {
   let userId = null;
   let userServiceAreas = [];
   let userBusinessTypeName = null;
-  if (req.user && req.user.id) {
-    userId = req.user.id;
-  } else if (req.cookies && req.cookies.accessToken) {
-    try {
-      const jwt = require("jsonwebtoken");
-      const SECRET = process.env.JWT_SECRET || "random_secret_key";
-      const decoded = jwt.verify(req.cookies.accessToken, SECRET);
-      if (typeof decoded === "object" && decoded.id) {
-        userId = decoded.id;
-      }
-    } catch (e) {}
-  }
-  if (userId) {
-    const userDoc = await User.findById(userId).populate("businessType").lean();
-    if (userDoc) {
-      if (
-        userDoc.businessType &&
-        typeof userDoc.businessType === "object" &&
-        userDoc.businessType.name
-      ) {
-        userBusinessTypeId = userDoc.businessType._id;
-        userBusinessTypeName = userDoc.businessType.name;
-      } else if (userDoc.businessType) {
-        userBusinessTypeId = userDoc.businessType;
-      }
-      if (Array.isArray(userDoc.serviceAreas)) {
-        userServiceAreas = userDoc.serviceAreas;
-      }
-    }
-  }
+  // if (req.user && req.user.id) {
+  //   userId = req.user.id;
+  // } else if (req.cookies && req.cookies.accessToken) {
+  //   try {
+  //     const jwt = require("jsonwebtoken");
+  //     const SECRET = process.env.JWT_SECRET || "random_secret_key";
+  //     const decoded = jwt.verify(req.cookies.accessToken, SECRET);
+  //     if (typeof decoded === "object" && decoded.id) {
+  //       userId = decoded.id;
+  //     }
+  //   } catch (e) {}
+  // }
+  // if (userId) {
+  //   const userDoc = await User.findById(userId).populate("businessType").lean();
+  //   if (userDoc) {
+  //     if (
+  //       userDoc.businessType &&
+  //       typeof userDoc.businessType === "object" &&
+  //       userDoc.businessType.name
+  //     ) {
+  //       userBusinessTypeId = userDoc.businessType._id;
+  //       userBusinessTypeName = userDoc.businessType.name;
+  //     } else if (userDoc.businessType) {
+  //       userBusinessTypeId = userDoc.businessType;
+  //     }
+  //     if (Array.isArray(userDoc.serviceAreas)) {
+  //       userServiceAreas = userDoc.serviceAreas;
+  //     }
+  //   }
+  // }
 
   let queryDoc = await Query.findOne({ searchText });
   if (queryDoc) {
+    queryDoc.searchCount = (queryDoc.searchCount || 0) + 1;
+    await queryDoc.save();
+
     // Always return cached results from DB if query exists
     const businesses = await Businesses.find({
       _id: { $in: queryDoc.results },
@@ -129,6 +132,12 @@ router.post("/search", async (req, res) => {
     let nextPageToken = null;
     let firstRequest = true;
     let lastPageToken = null;
+
+    // const body = { textQuery: searchText };
+    // const response = await axios.post(url, body, { headers });
+    // const places = response.data.places || [];
+    // allPlaces = allPlaces.concat(places);
+    
     do {
       const body = { textQuery: searchText };
       if (!firstRequest && nextPageToken) {
@@ -167,21 +176,22 @@ router.post("/search", async (req, res) => {
         };
 
         let websiteInfo = {};
-        if (baseInfo.websiteUri) {
-          websiteInfo = await scrapeWebsiteForInfo(
-            baseInfo.websiteUri,
-            userBusinessTypeId,
-            userServiceAreas,
-            userBusinessTypeName
-          );
-        }
+
+        websiteInfo = await scrapeWebsiteForInfo(
+          baseInfo.websiteUri,
+          baseInfo.name,
+          baseInfo.types,
+          baseInfo.formattedAddress,
+          userBusinessTypeId,
+          userServiceAreas,
+          userBusinessTypeName
+        );
 
         return { ...baseInfo, ...websiteInfo };
       },
-      3,
+      5,
       2
     );
-
     // Save to DB
     const savedResults = [];
 
@@ -199,10 +209,10 @@ router.post("/search", async (req, res) => {
         });
       }
       // 2. Google Reviews < 5
-      if (typeof result.rating === "number" && result.rating < 5) {
+      if (typeof result.rating === "number" && result.rating < 4.5) {
         generalScore += 10;
         generalCriteriaDetails.push({
-          parameter: "Google Reviews < 5",
+          parameter: "Google Reviews < 4.5",
           value: result.rating,
           points: 10,
         });
@@ -225,15 +235,14 @@ router.post("/search", async (req, res) => {
       }
       // 4. PageSpeed performance < 40
       if (
-        result.websiteInfo &&
-        result.websiteInfo.pageSpeed &&
-        typeof result.websiteInfo.pageSpeed.performance === "number" &&
-        result.websiteInfo.pageSpeed.performance < 40
+        result.pageSpeed &&
+        typeof result.pageSpeed.performance === "number" &&
+        result.pageSpeed.performance < 40
       ) {
         generalScore += 25;
         generalCriteriaDetails.push({
           parameter: "PageSpeed performance < 40",
-          value: result.websiteInfo.pageSpeed.performance,
+          value: result.pageSpeed.performance,
           points: 25,
         });
       }
@@ -255,13 +264,23 @@ router.post("/search", async (req, res) => {
           points: 20,
         });
       }
-      // 6. No SSL on site
-      if (result.websiteInfo && result.websiteInfo.hasSSL === false) {
-        generalScore += 10;
+
+      if (result.hasSSL && result.hasSSL !== true) {
+        generalScore += 10; // Add points for missing SSL
         generalCriteriaDetails.push({
           parameter: "No SSL on site",
           value: false,
           points: 10,
+        });
+      }
+
+      // Adjusted scoring logic to ensure points are added for missing SSL and unavailable website
+      if (result.websiteStatus && result.websiteStatus === "Unavailable") {
+        generalScore += 25; // Add points for website being unavailable
+        generalCriteriaDetails.push({
+          parameter: "Website unavailable",
+          value: result.websiteStatus,
+          points: 25,
         });
       }
 
@@ -273,17 +292,6 @@ router.post("/search", async (req, res) => {
       let marketingScore = 0;
       const marketingCriteriaDetails = [];
       // 1. Website unavailable
-      if (
-        result.websiteInfo &&
-        result.websiteInfo.websiteStatus === "Unavailable"
-      ) {
-        marketingScore += 25;
-        marketingCriteriaDetails.push({
-          parameter: "Website unavailable",
-          value: result.websiteInfo.websiteStatus,
-          points: 25,
-        });
-      }
 
       // 2. Analyze gptInsights publicPosts/JobPosts
       if (result.gptInsights && result.gptInsights["publicPosts/JobPosts"]) {
@@ -415,7 +423,7 @@ router.post("/search", async (req, res) => {
       );
       queryDoc.results = allBusinessDocs.map((doc) => doc._id);
       queryDoc.searchCount = (queryDoc.searchCount || 0) + 1;
-      queryDoc.resultCount = allBusinessDocs.length; // Update the number of results
+      queryDoc.resultCount = allBusinessDocs.length;
     }
 
     await queryDoc.save();
