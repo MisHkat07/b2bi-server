@@ -14,8 +14,8 @@ function adminOnly(req, res, next) {
 // Create BusinessType
 router.post(
   "/admin/businesstypes",
-  authMiddleware,
-  adminOnly,
+  // authMiddleware,
+  // adminOnly,
   async (req, res) => {
     try {
       const businessType = new BusinessType(req.body);
@@ -35,8 +35,8 @@ router.post(
 // Get all BusinessTypes
 router.get(
   "/admin/businesstypes",
-  authMiddleware,
-  adminOnly,
+  // authMiddleware,
+  // adminOnly,
   async (req, res) => {
     try {
       const businessTypes = await BusinessType.find();
@@ -55,8 +55,8 @@ router.get(
 // Get BusinessType by ID
 router.get(
   "/admin/businesstypes/:id",
-  authMiddleware,
-  adminOnly,
+  // authMiddleware,
+  // adminOnly,
   async (req, res) => {
     try {
       const businessType = await BusinessType.findById(req.params.id);
@@ -77,8 +77,8 @@ router.get(
 // Update BusinessType
 router.put(
   "/admin/businesstypes/:id",
-  authMiddleware,
-  adminOnly,
+  // authMiddleware,
+  // adminOnly,
   async (req, res) => {
     try {
       const businessType = await BusinessType.findByIdAndUpdate(

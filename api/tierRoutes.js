@@ -12,7 +12,7 @@ function adminOnly(req, res, next) {
 }
 
 // Create Tier
-router.post("/admin/tiers", authMiddleware, adminOnly, async (req, res) => {
+router.post("/admin/tiers", async (req, res) => {
   try {
     const tier = new Tier(req.body);
     await tier.save();
@@ -25,7 +25,7 @@ router.post("/admin/tiers", authMiddleware, adminOnly, async (req, res) => {
 });
 
 // Get all Tiers
-router.get("/admin/tiers", authMiddleware, adminOnly, async (req, res) => {
+router.get("/admin/tiers",  async (req, res) => {
   try {
     const tiers = await Tier.find();
     res.json({ tiers });
@@ -37,7 +37,7 @@ router.get("/admin/tiers", authMiddleware, adminOnly, async (req, res) => {
 });
 
 // Get Tier by ID
-router.get("/admin/tiers/:id", authMiddleware, adminOnly, async (req, res) => {
+router.get("/admin/tiers/:id",  async (req, res) => {
   try {
     const tier = await Tier.findById(req.params.id);
     if (!tier) return res.status(404).json({ message: "Tier not found" });
@@ -50,7 +50,7 @@ router.get("/admin/tiers/:id", authMiddleware, adminOnly, async (req, res) => {
 });
 
 // Update Tier
-router.put("/admin/tiers/:id", authMiddleware, adminOnly, async (req, res) => {
+router.put("/admin/tiers/:id",  async (req, res) => {
   try {
     const tier = await Tier.findByIdAndUpdate(req.params.id, req.body, {
       new: true,
@@ -67,8 +67,6 @@ router.put("/admin/tiers/:id", authMiddleware, adminOnly, async (req, res) => {
 // Delete Tier
 router.delete(
   "/admin/tiers/:id",
-  authMiddleware,
-  adminOnly,
   async (req, res) => {
     try {
       const tier = await Tier.findByIdAndDelete(req.params.id);
