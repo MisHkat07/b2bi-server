@@ -25,9 +25,9 @@ const businessTypeRoutes = require("./api/businessTypeRoutes");
 
 // Use Routes
 app.use("/api/b2bi", businessRoutes);
-app.use("/api/b2bi/dashboard", dashboardRoutes);
-app.use("/api/b2bi/tier", tierRoutes);
-app.use("/api/b2bi/businesstype", businessTypeRoutes);
+app.use("/api/b2bi", dashboardRoutes);
+app.use("/api/b2bi", tierRoutes);
+app.use("/api/b2bi", businessTypeRoutes);
 
 app.get("/", (req, res) => {
   res.send("Welcome to the Google Place API");

@@ -1,4 +1,3 @@
-const playwright = require("playwright");
 const axios = require("axios");
 const { exec } = require("child_process");
 const util = require("util");
@@ -8,6 +7,7 @@ const cheerio = require("cheerio");
 const dns = require("dns").promises;
 const tls = require("tls");
 const BusinessType = require("../models/BusinessType");
+const puppeteer = require("puppeteer");
 require("dotenv").config();
 
 function checkSSL(host) {
@@ -39,9 +39,8 @@ async function scrapeWebsiteForInfo(
   userBusinessTypeName
 ) {
   let browser;
-  browser = await playwright.chromium.launch({ headless: true });
-  const context = await browser.newContext();
-  const page = await context.newPage();
+  browser = await puppeteer.launch({ headless: true });
+  const page = await browser.newPage();
   let websiteStatus = "Unavailable";
   let finalUrl = url;
   let hasSSL = url?.startsWith("https://") ? true : false;
@@ -53,7 +52,7 @@ async function scrapeWebsiteForInfo(
     });
     if (response && response.status() < 400) {
       websiteStatus = "Online";
-      finalUrl = response.url();
+      finalUrl = page.url();
       hasSSL = finalUrl.startsWith("https://") ? true : false;
       if (!hasSSL) {
         try {
@@ -84,7 +83,7 @@ async function scrapeWebsiteForInfo(
     const $ = cheerio.load(content);
 
     // Extract emails
-    const pageText = await page.innerText("body");
+    const pageText = await page.evaluate(() => document.body.innerText);
     let textEmailMatches =
       pageText.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) || [];
     emails = Array.from(new Set([...emails, ...textEmailMatches]));
