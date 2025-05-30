@@ -3,7 +3,7 @@ services:
     name: b2bi-server
     env: node
     plan: free
-    buildCommand: npx playwright install-deps && npm install
+    buildCommand: npm install && npx playwright install-deps
     startCommand: npm start
     envVars:
       - key: MONGO_URI
