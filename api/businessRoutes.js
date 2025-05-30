@@ -133,26 +133,26 @@ router.post("/search", async (req, res) => {
     let firstRequest = true;
     let lastPageToken = null;
 
-    // const body = { textQuery: searchText };
-    // const response = await axios.post(url, body, { headers });
-    // const places = response.data.places || [];
-    // allPlaces = allPlaces.concat(places);
-    
-    do {
-      const body = { textQuery: searchText };
-      if (!firstRequest && nextPageToken) {
-        body.pageToken = nextPageToken;
-      }
-      const response = await axios.post(url, body, { headers });
-      const places = response.data.places || [];
-      allPlaces = allPlaces.concat(places);
-      nextPageToken = response.data.nextPageToken;
-      if (nextPageToken) lastPageToken = nextPageToken;
-      firstRequest = false;
-      if (nextPageToken) {
-        await new Promise((r) => setTimeout(r, 2000)); // Google API requires delay between page fetches
-      }
-    } while (nextPageToken);
+    const body = { textQuery: searchText };
+    const response = await axios.post(url, body, { headers });
+    const places = response.data.places || [];
+    allPlaces = allPlaces.concat(places);
+
+    // do {
+    //   const body = { textQuery: searchText };
+    //   if (!firstRequest && nextPageToken) {
+    //     body.pageToken = nextPageToken;
+    //   }
+    //   const response = await axios.post(url, body, { headers });
+    //   const places = response.data.places || [];
+    //   allPlaces = allPlaces.concat(places);
+    //   nextPageToken = response.data.nextPageToken;
+    //   if (nextPageToken) lastPageToken = nextPageToken;
+    //   firstRequest = false;
+    //   if (nextPageToken) {
+    //     await new Promise((r) => setTimeout(r, 2000)); // Google API requires delay between page fetches
+    //   }
+    // } while (nextPageToken);
 
     // Enrich each place with scraped data
     const enrichedResults = await batchProcessWithConcurrencyLimit(
@@ -178,7 +178,7 @@ router.post("/search", async (req, res) => {
         let websiteInfo = {};
 
         websiteInfo = await scrapeWebsiteForInfo(
-          baseInfo.websiteUri,
+          baseInfo?.websiteUri,
           baseInfo.name,
           baseInfo.types,
           baseInfo.formattedAddress,
@@ -373,8 +373,7 @@ router.post("/search", async (req, res) => {
         primaryType: result.primaryType,
         emails: result?.emails || [],
         linkedIn: result.linkedIn,
-        gptInsights:
-          typeof result.gptInsights === "object" ? result.gptInsights : {},
+        gptInsights: result.gptInsights ? result.gptInsights : {},
         websiteInfo: {
           hasSSL: result.hasSSL,
           websiteStatus: result.websiteStatus,

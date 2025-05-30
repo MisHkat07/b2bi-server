@@ -244,7 +244,7 @@ router.post("/admin/users", async (req, res) => {
 });
 
 // Admin: Update user
-router.put("/admin/users/:id",  async (req, res) => {
+router.put("/admin/users/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const updates = req.body;
@@ -262,7 +262,8 @@ router.put("/admin/users/:id",  async (req, res) => {
 // Admin: Delete user
 router.delete(
   "/admin/users/:id",
-
+  authMiddleware,
+  adminOnly,
   async (req, res) => {
     try {
       const { id } = req.params;

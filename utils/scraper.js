@@ -44,9 +44,8 @@ async function scrapeWebsiteForInfo(
   const page = await context.newPage();
   let websiteStatus = "Unavailable";
   let finalUrl = url;
-  let hasSSL = url.startsWith("https://") ? true : false;
-  let gptInsights = null;
-  let pageSpeed = null;
+  let hasSSL = url?.startsWith("https://") ? true : false;
+  let pageSpeed;
   try {
     const response = await page.goto(url, {
       waitUntil: "domcontentloaded",
@@ -155,7 +154,7 @@ async function scrapeWebsiteForInfo(
     }
     pageSpeed = await getPageSpeedScore(finalUrl);
 
-    gptInsights = await analyzeWithGPT(
+    const gptInsights = await analyzeWithGPT(
       {
         name,
         websiteUri: finalUrl,
@@ -167,7 +166,7 @@ async function scrapeWebsiteForInfo(
       userServiceAreas,
       userBusinessTypeName
     );
-
+   
     return {
       emails,
       linkedIn,
@@ -177,10 +176,23 @@ async function scrapeWebsiteForInfo(
       pageSpeed,
     };
   } catch (err) {
+    const gptInsights = await analyzeWithGPT(
+      {
+        name,
+        websiteUri: finalUrl,
+        types,
+        formattedAddress,
+        hasSSL,
+      },
+      userBusinessTypeId,
+      userServiceAreas,
+      userBusinessTypeName
+    );
     return {
       emails: [],
       linkedIn: null,
       hasSSL,
+      gptInsights,
       websiteStatus,
       pageSpeed,
       scrapeError: err.message,
@@ -249,8 +261,8 @@ async function analyzeWithGPT(
 
   * Target Business Details :
   Business Name: ${name}
-  Website: ${websiteUri}
-  Address: ${formattedAddress}
+  Website: ${websiteUri ? websiteUri : "N/A"}
+  Address: ${formattedAddress ? formattedAddress : "N/A"}
   Business Types: ${types?.join(", ") || "N/A"}
 
   

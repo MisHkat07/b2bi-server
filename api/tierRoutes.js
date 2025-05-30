@@ -12,7 +12,7 @@ function adminOnly(req, res, next) {
 }
 
 // Create Tier
-router.post("/admin/tiers", async (req, res) => {
+router.post("/admin/tiers",  async (req, res) => {
   try {
     const tier = new Tier(req.body);
     await tier.save();
@@ -67,6 +67,8 @@ router.put("/admin/tiers/:id",  async (req, res) => {
 // Delete Tier
 router.delete(
   "/admin/tiers/:id",
+  // authMiddleware,
+  // adminOnly,
   async (req, res) => {
     try {
       const tier = await Tier.findByIdAndDelete(req.params.id);
