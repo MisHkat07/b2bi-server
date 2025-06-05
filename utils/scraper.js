@@ -36,7 +36,8 @@ async function scrapeWebsiteForInfo(
   formattedAddress,
   userBusinessTypeId,
   userServiceAreas,
-  userBusinessTypeName
+  userBusinessTypeName,
+  prompt
 ) {
   let browser;
   browser = await playwright.chromium.launch({ headless: true });
@@ -164,9 +165,10 @@ async function scrapeWebsiteForInfo(
       },
       userBusinessTypeId,
       userServiceAreas,
-      userBusinessTypeName
+      userBusinessTypeName,
+      prompt
     );
-   
+
     return {
       emails,
       linkedIn,
@@ -235,13 +237,14 @@ async function analyzeWithGPT(
   data,
   userBusinessTypeId,
   userServiceAreas,
-  userBusinessTypeName
+  userBusinessTypeName,
+  prompt
 ) {
   const { name, websiteUri, linkedIn, types, formattedAddress, hasSSL } = data;
 
   // Dynamic prompt construction
   const userServiceDetails =
-    userServiceAreas && userServiceAreas.length
+    Array.isArray(userServiceAreas) && userServiceAreas.length > 0
       ? `Service Types: ${userServiceAreas.join(", ")}`
       : "Service Types: (not specified)";
   const businessTypeText = userBusinessTypeName
@@ -337,17 +340,11 @@ async function analyzeWithGPT(
   only send data, no extra text or explanation. Do not include any other information. Do not include code blocks. Do not include markdown formatting. Do not include links. Do not include URLs. Do not include HTML tags. Do not include JSON formatting. Do not include JSON keys or values. Do not include code
 `;
 
-  let prompt = defaultPrompt;
-  if (userBusinessTypeId) {
-    // Try to fetch the business type and use its custom prompt if available
-    const businessTypeDoc = await BusinessType.findById(
-      userBusinessTypeId
-    ).lean();
-    // Fix type mismatch for businessTypeDoc.prompt
-    if (businessTypeDoc && typeof businessTypeDoc.prompt === "string") {
-      prompt = businessTypeDoc.prompt;
-    }
-  }
+  // Use the prompt argument if provided, else use the default prompt
+  const finalPrompt =
+    prompt && typeof prompt === "string" && prompt.trim().length > 0
+      ? prompt
+      : defaultPrompt;
 
   try {
     const response = await axios.post(
@@ -360,7 +357,7 @@ async function analyzeWithGPT(
             content:
               "You're a business intelligence and Market Intent  analyst. Who will suggest the approachable ways for tagret business.",
           },
-          { role: "user", content: prompt },
+          { role: "user", content: finalPrompt },
         ],
         max_tokens: 1500,
       },
@@ -380,6 +377,7 @@ async function analyzeWithGPT(
     }
     return gptObj;
   } catch (error) {
+    console.log("🎯 error:", error);
     console.error("Error calling OpenAI API:", error.message);
     return {
       error: "OpenAI API error",

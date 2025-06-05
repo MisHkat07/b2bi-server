@@ -202,7 +202,7 @@ function adminOnly(req, res, next) {
 }
 
 // Admin: Create user
-router.post("/admin/users", async (req, res) => {
+router.post("/admin/users", authMiddleware, adminOnly, async (req, res) => {
   try {
     const {
       username,
@@ -244,7 +244,7 @@ router.post("/admin/users", async (req, res) => {
 });
 
 // Admin: Update user
-router.put("/admin/users/:id", async (req, res) => {
+router.put("/admin/users/:id", authMiddleware, adminOnly, async (req, res) => {
   try {
     const { id } = req.params;
     const updates = req.body;
@@ -279,7 +279,7 @@ router.delete(
 );
 
 // Admin: Get all users
-router.get("/admin/users",  async (req, res) => {
+router.get("/admin/users", authMiddleware, adminOnly, async (req, res) => {
   try {
     const users = await User.find().select("-password");
     res.json({ users });
@@ -290,7 +290,7 @@ router.get("/admin/users",  async (req, res) => {
   }
 });
 
-router.put("/update",  async (req, res) => {
+router.put("/update", authMiddleware, async (req, res) => {
   try {
     const updates = req.body;
 

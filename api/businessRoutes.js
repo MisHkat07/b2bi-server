@@ -3,7 +3,7 @@ const router = express.Router();
 const Businesses = require("../models/Businesses");
 const Query = require("../models/Query");
 const axios = require("axios");
-const { scrapeWebsiteForInfo } = require("../utils/scraper");
+const { scrapeWebsiteForInfo, analyzeWithGPT } = require("../utils/scraper");
 require("dotenv").config();
 const userRoutes = require("./user");
 const roleRoutes = require("./roles");
@@ -54,7 +54,7 @@ async function batchProcessWithConcurrencyLimit(
 
 // @desc    Search businesses via Google Places and enrich with scraping + GPT
 router.post("/search", async (req, res) => {
-  const { searchText } = req.body;
+  const { searchText, prompt } = req.body;
   if (!searchText) {
     return res.status(400).json({ message: "Missing searchText" });
   }
@@ -117,7 +117,6 @@ router.post("/search", async (req, res) => {
     });
   }
 
-  // Only make a single call to Google Places API, no pagination/nextPageToken logic
   try {
     const apiKey = process.env.GOOGLE_PLACES_API_KEY;
     const url = "https://places.googleapis.com/v1/places:searchText";
@@ -133,65 +132,86 @@ router.post("/search", async (req, res) => {
     let firstRequest = true;
     let lastPageToken = null;
 
-    const body = { textQuery: searchText };
-    const response = await axios.post(url, body, { headers });
-    const places = response.data.places || [];
-    allPlaces = allPlaces.concat(places);
+    // const body = { textQuery: searchText };
+    // const response = await axios.post(url, body, { headers });
+    // const places = response.data.places || [];
+    // allPlaces = allPlaces.concat(places);
 
-    // do {
-    //   const body = { textQuery: searchText };
-    //   if (!firstRequest && nextPageToken) {
-    //     body.pageToken = nextPageToken;
-    //   }
-    //   const response = await axios.post(url, body, { headers });
-    //   const places = response.data.places || [];
-    //   allPlaces = allPlaces.concat(places);
-    //   nextPageToken = response.data.nextPageToken;
-    //   if (nextPageToken) lastPageToken = nextPageToken;
-    //   firstRequest = false;
-    //   if (nextPageToken) {
-    //     await new Promise((r) => setTimeout(r, 2000)); // Google API requires delay between page fetches
-    //   }
-    // } while (nextPageToken);
+    do {
+      const body = { textQuery: searchText };
+      if (!firstRequest && nextPageToken) {
+        body.pageToken = nextPageToken;
+      }
+      const response = await axios.post(url, body, { headers });
+      const places = response.data.places || [];
+      allPlaces = allPlaces.concat(places);
+      nextPageToken = response.data.nextPageToken;
+      if (nextPageToken) lastPageToken = nextPageToken;
+      firstRequest = false;
+      if (nextPageToken) {
+        await new Promise((r) => setTimeout(r, 2000)); // Google API requires delay between page fetches
+      }
+    } while (nextPageToken);
 
-    // Enrich each place with scraped data
-    const enrichedResults = await batchProcessWithConcurrencyLimit(
-      allPlaces,
-      async (placeData) => {
-        const baseInfo = {
-          name: placeData.displayName?.text,
-          id: placeData.id,
-          types: placeData.types,
-          businessStatus: placeData.businessStatus,
-          displayName: placeData.displayName,
-          nationalPhoneNumber: placeData.nationalPhoneNumber,
-          internationalPhoneNumber: placeData.internationalPhoneNumber,
-          websiteUri: placeData.websiteUri,
-          googleMapsUri: placeData.googleMapsUri,
-          formattedAddress: placeData.formattedAddress,
-          rating: placeData.rating,
-          userRatingCount: placeData.userRatingCount,
-          reviews: placeData.reviews,
-          primaryType: placeData.primaryType,
-        };
+    // Process places in batches of 10
+    const batchSize = 10;
+    const enrichedResults = [];
 
-        let websiteInfo = {};
+    for (let i = 0; i < allPlaces.length; i += batchSize) {
+      const batch = allPlaces.slice(i, i + batchSize);
+      console.log(
+        `Processing batch ${Math.floor(i / batchSize) + 1} of ${Math.ceil(
+          allPlaces.length / batchSize
+        )}`
+      );
 
-        websiteInfo = await scrapeWebsiteForInfo(
-          baseInfo?.websiteUri,
-          baseInfo.name,
-          baseInfo.types,
-          baseInfo.formattedAddress,
-          userBusinessTypeId,
-          userServiceAreas,
-          userBusinessTypeName
-        );
+      const batchResults = await batchProcessWithConcurrencyLimit(
+        batch,
+        async (placeData) => {
+          const baseInfo = {
+            name: placeData.displayName?.text,
+            id: placeData.id,
+            types: placeData.types,
+            businessStatus: placeData.businessStatus,
+            displayName: placeData.displayName,
+            nationalPhoneNumber: placeData.nationalPhoneNumber,
+            internationalPhoneNumber: placeData.internationalPhoneNumber,
+            websiteUri: placeData.websiteUri,
+            googleMapsUri: placeData.googleMapsUri,
+            formattedAddress: placeData.formattedAddress,
+            rating: placeData.rating,
+            userRatingCount: placeData.userRatingCount,
+            reviews: placeData.reviews,
+            primaryType: placeData.primaryType,
+          };
 
-        return { ...baseInfo, ...websiteInfo };
-      },
-      5,
-      2
-    );
+          let websiteInfo = {};
+
+          websiteInfo = await scrapeWebsiteForInfo(
+            baseInfo?.websiteUri,
+            baseInfo.name,
+            baseInfo.types,
+            baseInfo.formattedAddress,
+            userBusinessTypeId,
+            userServiceAreas,
+            userBusinessTypeName,
+            prompt
+          );
+
+          return { ...baseInfo, ...websiteInfo };
+        },
+        3,
+        2
+      );
+
+      enrichedResults.push(...batchResults);
+
+      if (i + batchSize < allPlaces.length) {
+        console.log("Taking a break between batches to avoid rate limiting...");
+        await new Promise((r) => setTimeout(r, 10000));
+      }
+    }
+
     // Save to DB
     const savedResults = [];
 
@@ -434,6 +454,27 @@ router.post("/search", async (req, res) => {
       message: "Error during business search and enrichment",
       error: error.toString(),
     });
+  }
+});
+
+// @desc    Test analyzeWithGPT directly
+router.post("/test-analyze-gpt", async (req, res) => {
+  try {
+    const { data, userServiceAreas, userBusinessTypeName, prompt } = req.body;
+    if (!data || typeof data !== "object") {
+      return res
+        .status(400)
+        .json({ error: "Missing or invalid 'data' object in request body" });
+    }
+    const result = await analyzeWithGPT(
+      data,
+      userServiceAreas,
+      userBusinessTypeName,
+      prompt
+    );
+    res.status(200).json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 
